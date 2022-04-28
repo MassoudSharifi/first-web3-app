@@ -23,7 +23,30 @@ const getEthereumContract = () => {
 export function TransactionsProvider({ children }) {
   const [currentAccount, setCurrentAccount] = React.useState(null);
   const [loading, setLoading] = React.useState(false);
-  const [transactionCount, setTransactionCount] = React.useState(0);
+  const [transactionCount, setTransactionCount] = React.useState(
+    localStorage.getItem("transactionCount") || 0
+  );
+  const [transactions, setTransactions] = React.useState([]);
+
+  const getListOfTransactions = async () => {
+    try {
+      const transactionContract = getEthereumContract();
+      const allTransactions = await transactionContract.getAllTransactions();
+      const structuredTransactions = allTransactions.map((transaction) => {
+        return {
+          ...transaction,
+          timestamp: new Date(
+            transaction.timestamp.toNumber() * 1000
+          ).toLocaleString(),
+          amount: parseInt(transaction.amount._hex) / 10 ** 18,
+        };
+      });
+      console.log(structuredTransactions);
+      setTransactions(structuredTransactions);
+    } catch (error) {
+      message.error("Error getting transactions");
+    }
+  };
 
   const checkIfWalletIsConnected = async () => {
     try {
@@ -33,7 +56,21 @@ export function TransactionsProvider({ children }) {
         message.info("Please connect your wallet");
       } else {
         setCurrentAccount(accounts[0]);
+        getListOfTransactions();
       }
+    } catch (error) {
+      console.log(error);
+      throw new Error("No accounts found");
+    }
+  };
+
+  const checkIfThereIsAnyTransaction = async () => {
+    try {
+      if (!ethereum) return alert("Please install MetaMask");
+      const transactionContract = getEthereumContract();
+      const transactionCount = await transactionContract.getTransactionCount();
+      setTransactionCount(transactionCount.toNumber());
+      localStorage.setItem("transactionCount", transactionCount);
     } catch (error) {
       console.log(error);
       throw new Error("No accounts found");
@@ -42,6 +79,7 @@ export function TransactionsProvider({ children }) {
 
   useEffect(() => {
     checkIfWalletIsConnected();
+    checkIfThereIsAnyTransaction();
   }, []);
 
   const connectWallet = async () => {
@@ -60,7 +98,7 @@ export function TransactionsProvider({ children }) {
 
   const sendTransaction = async ({ addressTo, amount, message, keyboard }) => {
     const transactionContract = getEthereumContract();
-    console.log(addressTo, amount, message, keyboard);
+
     try {
       if (!ethereum) return alert("Please install MetaMask");
       const parseAmount = ethers.utils.parseEther(amount);
@@ -87,6 +125,7 @@ export function TransactionsProvider({ children }) {
 
       const transactionCount = await transactionContract.getTransactionCount();
       setTransactionCount(transactionCount.toNumber());
+      localStorage.setItem("transactionCount", transactionCount.toNumber());
       setLoading(false);
     } catch (error) {
       console.log(error);
@@ -97,7 +136,14 @@ export function TransactionsProvider({ children }) {
 
   return (
     <TransactionsContext.Provider
-      value={{ connectWallet, currentAccount, sendTransaction, loading }}
+      value={{
+        connectWallet,
+        currentAccount,
+        sendTransaction,
+        loading,
+        transactionCount,
+        transactions,
+      }}
     >
       {children}
     </TransactionsContext.Provider>
